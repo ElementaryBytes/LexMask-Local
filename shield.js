@@ -1,6 +1,10 @@
-/* 🛡️ TYPINGMIND SECURE SHIELD v5.1 (Auto-Fetch & Decode) */
+/* 🛡️ TYPINGMIND SECURE SHIELD v5.2 (Cache-Buster & Case Insensitive) */
 (function() {
-    console.log("🛡️ Shield v5.1 Online: Auto-Fetch Enabled.");
+    // 1. FORCE REMOVE OLD UI (Fixes the "Stale Button" issue)
+    const oldContainer = document.getElementById('shield-container');
+    if (oldContainer) oldContainer.remove();
+    
+    console.log("🛡️ Shield v5.2 Online: UI Reset & Logic Updated.");
     
     const STORAGE_KEY = "legal_shield_map";
     const PRIVATE_LIST_KEY = "shield_private_blacklist";
@@ -16,17 +20,19 @@
         prefix: "Entity" 
     } : null;
 
+    // Enhanced Suffix List
     const corporateSuffixes = [
-        "Inc", "Inc\\.", "Corp", "Corp\\.", "Ltd", "Ltd\\.", "LLC", "L\\.L\\.C\\.", 
-        "GmbH", "AG", "KG", "SE", "S\\.A\\.", "S\\.A\\.S\\.", "S\\.r\\.l\\.", "S\\.p\\.A\\.", 
-        "B\\.V\\.", "N\\.V\\.", "Pty\\sLtd", "Pty\\.", "Co\\.", "Company", "K\\.K\\.", "G\\.K\\."
-    ].join("|");
+        "Inc", "Corp", "Ltd", "LLC", "GmbH", "AG", "KG", "SE", 
+        "S.A", "S.A.S", "S.r.l", "S.p.A", "B.V", "N.V", 
+        "Pty Ltd", "Pty", "Co", "Company", "K.K", "G.K"
+    ].join("|").replace(/\./g, "\\."); // Escape dots automatically
 
     const RULES = [
         ...(privateRule ? [privateRule] : []),
         {
             name: "Corporate Entity",
-            regex: new RegExp(`\\b([A-Z][a-zA-Z0-9&']+(?:\\s+[A-Z][a-zA-Z0-9&']+)*\\s+(?:${corporateSuffixes}))\\b`, 'g'),
+            // Added 'i' flag for Case Insensitivity (Matches Gmbh, GMBH, GmbH)
+            regex: new RegExp(`\\b([A-Z][a-zA-Z0-9&']+(?:\\s+[A-Z][a-zA-Z0-9&']+)*\\s+(?:${corporateSuffixes}))\\b`, 'gi'),
             prefix: "Company"
         },
         { name: "Email", regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, prefix: "Email" },
@@ -38,15 +44,17 @@
     function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify([...map])); }
 
     function getAlias(text, prefix) {
-        if (!map.has(text)) {
+        // Normalize text trimming for lookup stability
+        const key = text.trim();
+        if (!map.has(key)) {
             let count = 0;
             map.forEach((val) => { if(val.includes(`[${prefix}_`)) count++; });
             let alias = `[${prefix}_${count + 1}]`; 
-            map.set(text, alias);
-            map.set(alias, text);
+            map.set(key, alias);
+            map.set(alias, key);
             save();
         }
-        return map.get(text);
+        return map.get(key);
     }
 
     function maskText(text) {
@@ -61,18 +69,14 @@
         return { text: newText, wasMasked: masked };
     }
 
-    // The Logic to Restore Original Text
     function unmaskText(text) {
         let cleanText = text;
         map.forEach((realValue, alias) => {
             if (alias.startsWith("[")) {
-                // Global replace of alias -> real value
                 cleanText = cleanText.split(alias).join(realValue);
             }
         });
-        // Remove local lock emojis
-        cleanText = cleanText.replace(/ 🔒/g, "");
-        return cleanText;
+        return cleanText.replace(/ 🔒/g, "");
     }
 
     function handleSend(textarea, mainBtn) {
@@ -96,9 +100,9 @@
         }
     }
 
-    /* --- UI: COMPACT GHOST DOCK --- */
     function initUI() {
-        if (document.getElementById('shield-container')) return;
+        // Double check removal
+        if (document.getElementById('shield-container')) document.getElementById('shield-container').remove();
 
         let container = document.createElement('div');
         container.id = 'shield-container';
@@ -112,7 +116,7 @@
         container.onmouseenter = () => container.style.opacity = "1";
         container.onmouseleave = () => container.style.opacity = "0.3";
 
-        // 1. Shield Button (Force Send)
+        // Shield Button
         let btn = document.createElement('div');
         btn.innerHTML = `🛡️`;
         btn.title = "Shield Active";
@@ -125,30 +129,25 @@
             if (textarea) handleSend(textarea);
         };
 
-        // 2. Ghost Copy Button (Smart Fetch)
+        // Ghost Copy Button
         let copyBtn = document.createElement('div');
         copyBtn.innerHTML = `📋`;
-        copyBtn.title = "Copy Original (Selection OR Last AI Response)";
+        copyBtn.title = "Copy Original (Auto-Fetch)";
         copyBtn.style.cssText = `cursor: pointer; padding: 5px; font-size: 16px; border-left: 1px solid #555; transition: transform 0.1s;`;
         
         copyBtn.onclick = async (e) => {
             e.preventDefault();
             copyBtn.style.transform = "scale(0.9)";
             
-            // Logic: Selection > Last AI Message > Input Box
-            let textToProcess = "";
-            let selection = window.getSelection().toString();
-
-            if (selection) {
-                // User highlighted specific text
-                textToProcess = selection;
-            } else {
-                // Auto-Fetch: Find the last AI message bubble
+            // Priority: Selection -> Last AI Response -> Input Box
+            let textToProcess = window.getSelection().toString();
+            
+            if (!textToProcess) {
                 let messages = document.querySelectorAll('[data-element-id="ai-message"]');
                 if (messages.length > 0) {
                     textToProcess = messages[messages.length - 1].innerText;
+                    console.log("👻 Shield: Auto-fetched last AI message.");
                 } else {
-                    // Fallback to input box
                     let textarea = document.querySelector('textarea');
                     if (textarea) textToProcess = textarea.value;
                 }
@@ -156,17 +155,22 @@
 
             if (textToProcess) {
                 let clean = unmaskText(textToProcess);
+                console.log("👻 Shield Output Preview:", clean.substring(0, 50) + "..."); // Debug Log
+                
                 try {
                     await navigator.clipboard.writeText(clean);
                     copyBtn.innerHTML = "✅"; 
                 } catch (err) {
+                    console.error("Shield Copy Error:", err);
                     copyBtn.innerHTML = "❌";
                 }
+            } else {
+                copyBtn.innerHTML = "⚠️"; // Nothing to copy
             }
             setTimeout(() => { copyBtn.innerHTML = "📋"; copyBtn.style.transform = "scale(1)"; }, 1500);
         };
 
-        // Local Unmasking (Reader View)
+        // Reader View Unmasker
         setInterval(() => {
             let walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
             let node;
@@ -189,5 +193,5 @@
         document.body.appendChild(container);
     }
     
-    setTimeout(initUI, 2000);
+    setTimeout(initUI, 1500);
 })();

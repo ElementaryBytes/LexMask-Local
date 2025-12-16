@@ -1,18 +1,15 @@
-/* 🛡️ TYPINGMIND SECURE SHIELD v6.0 (Stable Boundaries & Smart Copy) */
+/* 🛡️ TYPINGMIND SECURE SHIELD v6.1 (Sanitized Input & Focus-Lock Copy) */
 (function() {
-    // 1. Clean Slate: Remove old buttons
     const oldContainer = document.getElementById('shield-container');
     if (oldContainer) oldContainer.remove();
 
-    console.log("🛡️ Shield v6.0 Online: Punctuation Fixes Applied.");
+    console.log("🛡️ Shield v6.1 Online: Input Sanitization Active.");
     
     const STORAGE_KEY = "legal_shield_map";
     const PRIVATE_LIST_KEY = "shield_private_blacklist";
 
-    // Load Memory
     let map = new Map(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"));
     
-    /* ⚙️ CONFIGURATION */
     const privateKeywords = localStorage.getItem(PRIVATE_LIST_KEY) || "";
     const privateRule = privateKeywords ? {
         name: "Private Blacklist",
@@ -20,7 +17,6 @@
         prefix: "Entity" 
     } : null;
 
-    // Corporate Suffixes (Escaped for Regex)
     const corporateSuffixes = [
         "Inc\\.?", "Corp\\.?", "Ltd\\.?", "LLC", "L\\.L\\.C\\.?", 
         "GmbH", "AG", "KG", "SE", "S\\.A\\.?", "S\\.A\\.S\\.?", "S\\.r\\.l\\.?", 
@@ -31,7 +27,6 @@
         ...(privateRule ? [privateRule] : []),
         {
             name: "Corporate Entity",
-            // FIX: We ensure we catch the name BUT separate trailing punctuation if it's not part of the suffix
             regex: new RegExp(`\\b([A-Z][a-zA-Z0-9&']+(?:\\s+[A-Z][a-zA-Z0-9&']+)*\\s+(?:${corporateSuffixes}))`, 'gi'),
             prefix: "Company"
         },
@@ -44,20 +39,18 @@
     function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify([...map])); }
 
     function getAlias(text, prefix) {
-        // Trim punctuation from key storage to prevent "Inc." vs "Inc" mismatch
         const key = text.trim(); 
         if (!map.has(key)) {
             let count = 0;
             map.forEach((val) => { if(val.includes(`[${prefix}_`)) count++; });
             let alias = `[${prefix}_${count + 1}]`; 
             map.set(key, alias);
-            map.set(alias, key); // Bidirectional
+            map.set(alias, key);
             save();
         }
         return map.get(key);
     }
 
-    /* --- LOGIC --- */
     function maskText(text) {
         let newText = text;
         let masked = false;
@@ -72,11 +65,7 @@
 
     function unmaskText(text) {
         let cleanText = text;
-        
-        // 1. Remove Reader View Locks first
-        cleanText = cleanText.replace(/ 🔒/g, "");
-
-        // 2. Decode Aliases
+        cleanText = cleanText.replace(/ 🔒/g, ""); // Remove artifacts
         const aliasPattern = /\[(Client|Company|Entity|Email|Card|ID)_\d+\]/g;
         cleanText = cleanText.replace(aliasPattern, (match) => {
             if (map.has(match)) return map.get(match);
@@ -86,14 +75,17 @@
     }
 
     function handleSend(textarea) {
-        let result = maskText(textarea.value);
+        // 1. SANITIZE: Remove any "Reader View" artifacts (locks/real names) before processing
+        // This ensures we mask the RAW text, not the visual text
+        let rawValue = textarea.value.replace(/ 🔒/g, "");
+        
+        let result = maskText(rawValue);
+        
         if (result.wasMasked) {
-            // Apply mask to input so TypingMind sends the code, not the name
             let setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
             setter.call(textarea, result.text);
             textarea.dispatchEvent(new Event('input', { bubbles: true }));
             
-            // Visual Flash Green
             textarea.style.transition = "background 0.2s";
             textarea.style.backgroundColor = "#d4edda";
             setTimeout(() => { 
@@ -107,7 +99,6 @@
         }
     }
 
-    /* --- UI --- */
     function initUI() {
         if (document.getElementById('shield-container')) return;
 
@@ -123,12 +114,14 @@
         container.onmouseenter = () => container.style.opacity = "1";
         container.onmouseleave = () => container.style.opacity = "0.3";
 
-        // Shield Button (Force Send)
+        // Shield Button (Click to Send)
         let btn = document.createElement('div');
         btn.innerHTML = `🛡️`;
-        btn.title = "Shield Active (Click to force send)";
-        btn.style.cssText = `cursor: pointer; padding: 5px; font-size: 16px; transition: transform 0.1s;`;
-        btn.onclick = (e) => {
+        btn.title = "Shield Active";
+        btn.style.cssText = `cursor: pointer; padding: 5px; font-size: 16px;`;
+        
+        // Use mousedown to prevent focus loss issues
+        btn.onmousedown = (e) => {
             e.preventDefault();
             let textarea = document.querySelector('textarea');
             if (textarea) handleSend(textarea);
@@ -138,27 +131,27 @@
         let copyBtn = document.createElement('div');
         copyBtn.innerHTML = `📋`;
         copyBtn.title = "Copy Selection (Unmasked)";
-        copyBtn.style.cssText = `cursor: pointer; padding: 5px; font-size: 16px; border-left: 1px solid #555; transition: transform 0.1s;`;
+        copyBtn.style.cssText = `cursor: pointer; padding: 5px; font-size: 16px; border-left: 1px solid #555;`;
         
         // Notification
         let notif = document.createElement('div');
         notif.style.cssText = `position: absolute; bottom: 40px; right: 0; background: #222; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px; opacity: 0; pointer-events: none; transition: opacity 0.2s; white-space: nowrap;`;
         container.appendChild(notif);
 
-        copyBtn.onclick = async (e) => {
+        // MOUSE DOWN EVENT: Grabs selection BEFORE click clears it
+        copyBtn.onmousedown = async (e) => {
             e.preventDefault();
-            copyBtn.style.transform = "scale(0.9)";
             
-            // 1. Get Selection
+            // 1. Grab Highlighted Text IMMEDIATELY
             let textToProcess = window.getSelection().toString();
             
-            // 2. If no selection, grab Input Box (User Draft)
             if (!textToProcess) {
+                // If no selection, check input box
                 let textarea = document.querySelector('textarea');
                 if (textarea && textarea.value) textToProcess = textarea.value;
             }
 
-            // 3. If still nothing, grab Last AI Message
+            // Fallback: Last AI message
             if (!textToProcess) {
                 let messages = document.querySelectorAll('[data-element-id="ai-message"]');
                 if (messages.length > 0) textToProcess = messages[messages.length - 1].innerText;
@@ -176,21 +169,20 @@
             } else {
                 copyBtn.innerHTML = "⚠️"; 
             }
-            setTimeout(() => { copyBtn.innerHTML = "📋"; copyBtn.style.transform = "scale(1)"; }, 1000);
+            setTimeout(() => { copyBtn.innerHTML = "📋"; }, 1000);
         };
 
-        // Reader View (Visual Unmasker for Chat History)
+        // Reader View
         setInterval(() => {
             let walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
             let node;
             while (node = walker.nextNode()) {
                 let txt = node.nodeValue;
-                // Only touch nodes that look like Aliases AND don't already have a lock
                 if (txt && txt.includes("[") && txt.includes("]") && !txt.includes("🔒")) {
                     map.forEach((real, alias) => {
                         if (alias.startsWith("[") && txt.includes(alias)) {
-                            // Avoid replacing inside the textarea (causes typing issues)
-                            if (node.parentElement && node.parentElement.tagName !== 'TEXTAREA') {
+                            // Only unmask inside message bubbles or input, not in system areas
+                            if (node.parentElement && node.parentElement.tagName !== 'SCRIPT' && node.parentElement.tagName !== 'STYLE') {
                                 node.nodeValue = txt.split(alias).join(`${real} 🔒`);
                             }
                         }

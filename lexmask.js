@@ -1,46 +1,83 @@
-/* ⚖️ LexMask v5.0 (DEBUG MODE)
- * - pops up an alert to PROVE it is loading
+/* ⚖️ LexMask v6.0 (OFFLINE & UI FORCE)
+ * - No external downloads (Fixes loading issues)
+ * - Bright RED UI to verify installation
  */
 
 (function() {
-    // 1. THE LOUD CHECK
-    alert("✅ LexMask is successfully loaded! Check the bottom right corner.");
+    // 1. CLEANUP OLD VERSIONS
+    const CONTAINER_ID = 'lexmask-container';
+    const old = document.getElementById(CONTAINER_ID);
+    if (old) old.remove();
 
-    // 2. SETUP
-    const OLD_CONTAINER_ID = 'lexmask-container';
-    if (document.getElementById(OLD_CONTAINER_ID)) document.getElementById(OLD_CONTAINER_ID).remove();
+    console.log("🚀 LexMask v6.0 Starting...");
 
-    const STORAGE_KEY_SECRETS = "lexmask_secrets";
-    let privateSecrets = (localStorage.getItem(STORAGE_KEY_SECRETS) || "").split(',').map(s => s.trim()).filter(s => s);
+    // 2. SIMPLE MASKING (Regex Only for now)
+    function maskText(text) {
+        // Simple patterns just to test
+        const patterns = [
+            { regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, sub: "[Email]" },
+            { regex: /\b(?:\d[ -]*?){13,16}\b/g, sub: "[Card]" }
+        ];
+        let newText = text;
+        let masked = false;
+        patterns.forEach(p => {
+            if (p.regex.test(newText)) {
+                newText = newText.replace(p.regex, p.sub);
+                masked = true;
+            }
+        });
+        return { text: newText, wasMasked: masked };
+    }
 
+    // 3. FORCE UI CREATION
     function createUI() {
-        let container = document.createElement('div');
-        container.id = OLD_CONTAINER_ID;
-        // High Contrast Styling to make it impossible to miss
-        container.style.cssText = `
-            position: fixed; bottom: 100px; right: 20px; 
-            display: flex; gap: 10px; z-index: 2147483647; 
-            background: red; padding: 10px; border-radius: 12px; 
-            border: 2px solid white; color: white; font-weight: bold;
-        `;
+        if (document.getElementById(CONTAINER_ID)) return; // Don't duplicate
 
-        let btn = document.createElement('div');
-        btn.innerHTML = "⚙️ SETTINGS";
-        btn.style.cursor = "pointer";
-        btn.onclick = () => {
-            const current = localStorage.getItem(STORAGE_KEY_SECRETS) || "";
-            const result = prompt("Enter secret words (comma separated):", current);
-            if (result !== null) {
-                localStorage.setItem(STORAGE_KEY_SECRETS, result);
-                alert("Saved!");
+        const div = document.createElement('div');
+        div.id = CONTAINER_ID;
+        // BRIGHT RED STYLE - IMPOSSIBLE TO MISS
+        div.style.cssText = `
+            position: fixed; 
+            bottom: 120px; 
+            right: 20px; 
+            background-color: #ff0000; 
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            z-index: 999999;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            cursor: pointer;
+            font-family: sans-serif;
+        `;
+        div.innerHTML = "🛡️ LEXMASK ACTIVE";
+        
+        div.onclick = () => {
+            const ta = document.querySelector('textarea');
+            if (ta) {
+                const res = maskText(ta.value);
+                ta.value = res.text;
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                alert("Masking check complete!");
+            } else {
+                alert("No text box found!");
             }
         };
 
-        container.appendChild(btn);
-        document.body.appendChild(container);
+        document.body.appendChild(div);
+        console.log("✅ LexMask UI Injected");
     }
 
-    // Try to draw immediately AND after 2 seconds
+    // 4. RETRY LOOP (Keeps trying every 1 second until it works)
+    const interval = setInterval(() => {
+        if (!document.getElementById(CONTAINER_ID)) {
+            createUI();
+        } else {
+            // Once it exists, we can stop checking so aggressively
+            clearInterval(interval);
+        }
+    }, 1000);
+    
+    // Run once immediately
     createUI();
-    setTimeout(createUI, 2000);
 })();

@@ -1,6 +1,6 @@
-/* ⚖️ LexMask v8.3 (Smart Copy & Safety Lock)
- * - Fixes Copy Button to prioritize AI Output
- * - Prevents sending before AI Brain is loaded
+/* ⚖️ LexMask v9.1 (Input Unlock)
+ * - Allows Copying UNMASKED text from the input box
+ * - Retains Safety Lock & Quick-Add
  */
 
 (function() {
@@ -9,7 +9,7 @@
     const old = document.getElementById(CONTAINER_ID);
     if (old) old.remove();
 
-    console.log("⚖️ LexMask v8.3: Smart Copy Active");
+    console.log("⚖️ LexMask v9.1: Input Copy Unlocked");
 
     const STORAGE_KEY_MAP = "lexmask_entity_map"; 
     const STORAGE_KEY_SECRETS = "lexmask_secrets";
@@ -20,6 +20,10 @@
 
     function saveToMemory() { 
         localStorage.setItem(STORAGE_KEY_MAP, JSON.stringify([...entityMap])); 
+    }
+
+    function saveSecrets() {
+        localStorage.setItem(STORAGE_KEY_SECRETS, privateSecrets.join(', '));
     }
 
     function getAlias(text, prefix) {
@@ -107,6 +111,21 @@
         }
     }
 
+    function quickAddSecret() {
+        const selection = window.getSelection().toString().trim();
+        if (selection && selection.length > 1) {
+            if (!privateSecrets.includes(selection)) {
+                privateSecrets.push(selection);
+                saveSecrets();
+                alert(`🔒 Added "${selection}" to private blacklist.`);
+            } else {
+                alert(`⚠️ "${selection}" is already in your blacklist.`);
+            }
+        } else {
+            alert("⚠️ Highlight a word first, then Shift+Click Shield to add it.");
+        }
+    }
+
     function revealAll() {
         let walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
         let node;
@@ -167,42 +186,56 @@
             b.innerHTML = icon; b.title = title;
             if (id) b.id = id;
             b.style.cssText = "cursor: pointer; font-size: 16px; padding: 6px; user-select: none; text-align: center;";
-            b.onmousedown = (e) => { e.preventDefault(); action(); };
+            b.onmousedown = (e) => { 
+                e.preventDefault(); 
+                if (id === 'lexmask-shield-btn' && e.shiftKey) {
+                    quickAddSecret();
+                } else {
+                    action(); 
+                }
+            };
             return b;
         };
 
-        container.appendChild(createBtn("🛡️", "Secure Send", () => {
+        // 1. SHIELD
+        container.appendChild(createBtn("🛡️", "Secure Send (Shift+Click to Add Secret)", () => {
             let ta = document.querySelector('textarea');
             if(ta) handleSend(ta);
         }, 'lexmask-shield-btn'));
         
+        // 2. REVEAL
         container.appendChild(createBtn("👁️", "Reveal", revealAll));
         
-        // SMART COPY LOGIC
+        // 3. COPY (Now Unlocks Input!)
         container.appendChild(createBtn("📋", "Copy", async () => {
              let textToProcess = "";
              let sel = window.getSelection().toString();
-             
-             // Only use selection if it's NOT the input box
-             if (sel && document.activeElement.tagName !== "TEXTAREA") {
+
+             // PRIORITY 1: Use Selected text (Even if inside Input Box!)
+             if (sel) {
                  textToProcess = sel;
-             } else {
-                 // Auto-grab last AI message
+             } 
+             // PRIORITY 2: Use Last AI Message
+             else {
                  let messages = document.querySelectorAll('[data-element-id="ai-message"]');
-                 if (messages.length > 0) {
-                     textToProcess = messages[messages.length - 1].innerText;
-                 }
+                 if (messages.length > 0) textToProcess = messages[messages.length - 1].innerText;
              }
 
              if (textToProcess) {
-                await navigator.clipboard.writeText(unmaskText(textToProcess));
+                // Decrypt it before copying
+                let clean = unmaskText(textToProcess);
+                await navigator.clipboard.writeText(clean);
+                
+                // Visual Feedback
                 let original = container.style.backgroundColor;
                 container.style.backgroundColor = "green";
                 setTimeout(() => container.style.backgroundColor = original, 500);
              }
         }));
 
+        // 4. SETTINGS
         container.appendChild(createBtn("⚙️", "Settings", openSettings));
+        
         document.body.appendChild(container);
         loadNLP();
     }
